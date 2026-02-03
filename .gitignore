@@ -53,3 +53,17 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# from ch32fun
+.pio
+.vscode
+.idea
+*.elf
+*.hex
+*.lst
+*.bin
+*.map
+compile_commands.json
+.cache
+src/ch32fun/generated_*.ld
+**/.DS_Store
