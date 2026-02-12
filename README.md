@@ -1,6 +1,7 @@
 # UART data logger to SD card
 
-*Work in progress...*
+> [!NOTE]
+> *Work in progress...*
 
 This is a simple UART data logger, logger saves the data to FAT(12/16/32) formatted SD card.
 
@@ -21,7 +22,7 @@ This is a simple UART data logger, logger saves the data to FAT(12/16/32) format
 | OFF | Logger stopped, free to remove the SD card after powering down |
 | ON | Logger running, do not remove the card |
 | Constant blinking | Logger error |
-| Brief pulsing | received UART data and actively logging |
+| Brief pulsing |  Actively logging the received UART data |
 
 ### Reasons for logger error
 
@@ -35,7 +36,29 @@ This is a simple UART data logger, logger saves the data to FAT(12/16/32) format
 
 TODO
 
-### Thanks to various open source code base helped to realize the project
+## Tested features
+
+> [!WARNING]
+> Not all aspects of the functionality was tested (This was a side project)
+
+- Tested baud
+  - 115200
+  - 750000
+- Data bits
+  - 8
+  - 9
+- Parity
+  - None
+- Stop bits
+  - 2
+- Logging format
+  - `c` - ASCII characters
+  - `x`/`X` - Hexadecimal
+- Seq start/Seq stop
+  - `\r`
+  - `0x1CC`
+
+### Thanks to various open source code base helped realizing the project
 
 - Framework [ch32fun](https://github.com/cnlohr/ch32fun)
 - SD Card driver [modified sample driver from ChaN](https://elm-chan.org/docs/mmc/mmc_e.html)
