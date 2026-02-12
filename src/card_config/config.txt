@@ -1,4 +1,4 @@
-#s<no>:baud,data bits,parity,stop bits,output formatter,seq start char,seq end char
+#s<no>:baud,data bits<8,9>,parity<0,1,2>,stop bits<1,2>,output formatter<c,x,X>,seq start char,seq end char
 #t:year,month,day,hour,minute
-s1:115200,8,0,1,x,13,10
-t:2026,01,30,12,22
+s1:750000,8,0,1,X,13,13
+t:2026,2,12,16,32

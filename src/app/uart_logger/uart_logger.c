@@ -10,8 +10,12 @@ stHMI gHMI;
 stCFGLog gCfgLog;
 FATFS gFsFAT;
 FIL ghFile;
-char gbuffCache[256];
 uint16_t gu16buffRx[APP_UART_RX_BUFF_SZ];
+
+#if (APP_CONF_RUNNING_LOG)
+static char gbuffCache[FF_MIN_SS];
+static uint32_t gidxCacheWr = 0;
+#endif
 
 int _write(int fd,
            const char *buf,
@@ -117,7 +121,11 @@ static inline FRESULT doConfig(void) {
   FRESULT rslt = f_open(&ghFile, "config.txt", FA_READ);
   int tmp;
   if (rslt == FR_OK) {
+    #if (APP_CONF_CACHE_BUFF == 1)
+    #define buff gbuffCache
+    #else
     char buff[40];
+    #endif
     char *pBuff;
     struct {
       uint32_t uBaud;
@@ -148,13 +156,13 @@ static inline FRESULT doConfig(void) {
       rslt = FR_INVALID_PARAMETER;
       goto _doConfig_Exit;
     }
-    puts(buff);
+    puts_(buff);
     // skip first 3 chars 's1:'
-    tmp = c_sscanf(&buff[3], "%u,%u,%u,%u,%c,%u,%u", &cfgUART.uBaud, &cfgUART.uBits, &cfgUART.uParity, &cfgUART.uStop,
+    tmp = c_sscanf(&buff[3], "%u%u%u%u%*c%c%u%u", &cfgUART.uBaud, &cfgUART.uBits, &cfgUART.uParity, &cfgUART.uStop,
                    &gCfgLog.cOutputFormatter, &gCfgLog.uSeqStart, &gCfgLog.uSeqStop);
-    printf_("s1:%u,%u,%u,%u,%u,%u\n", cfgUART.uBaud, cfgUART.uBits, cfgUART.uParity, cfgUART.uStop, gCfgLog.uSeqStart,
-            gCfgLog.uSeqStop);
-    if (tmp != 7) {
+    printf_("s1:%u,%u,%u,%u,%u,%u,%c|\n", cfgUART.uBaud, cfgUART.uBits, cfgUART.uParity, cfgUART.uStop, gCfgLog.uSeqStart,
+            gCfgLog.uSeqStop, gCfgLog.cOutputFormatter);
+    if (tmp != 8) {
       rslt = FR_INVALID_PARAMETER;
       goto _doConfig_Exit;
     }
@@ -221,23 +229,31 @@ static inline FRESULT doConfig(void) {
 
     // read configured time
     // pBuff = f_gets(buff, sizeof(buff)-1, &ghFile);
-    pBuff = _f_gets(buff, &ghFile);
-    if (pBuff == 0) {
-      rslt = FR_INVALID_PARAMETER;
-      goto _doConfig_Exit;
-    }
-    puts(buff);
-    tmp = c_sscanf(buff, "t:%d,%d,%d,%d,%d", &gTime.uYear, &gTime.uMonth, &gTime.uDay, &gTime.uHour, &gTime.uMinute);
-    printf_("t:%d,%d,%d,%d,%d\n", gTime.uYear, gTime.uMonth, gTime.uDay, gTime.uHour, gTime.uMinute);
-    gTime.uSecond = gTime.uMilliSec = 0;
-    if (tmp != 5) {
-      rslt = FR_INVALID_PARAMETER;
-      goto _doConfig_Exit;
+    #if (APP_CONF_RELOAD_TIME_ON_START == 0)
+    if(gTime.uYear > 1980)
+    #endif
+    {
+      pBuff = _f_gets(buff, &ghFile);
+      if (pBuff == 0) {
+        rslt = FR_INVALID_PARAMETER;
+        goto _doConfig_Exit;
+      }
+      puts_(buff);
+      tmp = c_sscanf(&buff[2], "%u%u%u%u%u", &gTime.uYear, &gTime.uMonth, &gTime.uDay, &gTime.uHour, &gTime.uMinute);
+      printf_("t:%d,%d,%d,%d,%d\n", gTime.uYear, gTime.uMonth, gTime.uDay, gTime.uHour, gTime.uMinute);
+      gTime.uSecond = gTime.uMilliSec = 0;
+      if (tmp != 5) {
+        rslt = FR_INVALID_PARAMETER;
+        goto _doConfig_Exit;
+      }
     }
   }
 _doConfig_Exit:
   f_close(&ghFile);
   return rslt;
+  #if (APP_CONF_CACHE_BUFF == 1)
+    #undef buff
+  #endif
 }
 
 #if (APP_CONF_RUNNING_LOG == 0)
@@ -260,7 +276,7 @@ static inline FRESULT doCreateNewLog(void) {
   *pBuff++ = 'g';
   *pBuff++ = '\0';
 
-  puts(buff);
+  puts_(buff);
   FRESULT rslt = f_open(&ghFile, buff, FA_CREATE_NEW | FA_WRITE);
   if (rslt == FR_OK) {
     return rslt;
@@ -311,7 +327,7 @@ static inline FRESULT doCreateNewLog(void) {
     *pBuff++ = 'o';
     *pBuff++ = 'g';
     *pBuff++ = '\0';
-    puts(buff);
+    puts_(buff);
     rslt = f_open(&ghFile, buff, FA_CREATE_NEW | FA_WRITE);
     if (rslt != FR_OK) {
       goto _doCreateNewLog_Exit;
@@ -326,6 +342,61 @@ _doCreateNewLog_Exit:
 }
 #endif
 
+#if (APP_CONF_CACHE_BUFF) 
+static inline int doWriteLog(uint16_t val) {
+  UINT nBytesAccessed;
+
+  #define cacheWrite(x) gbuffCache[gidxCacheWr++]=x
+  #define cacheWritePtr &gbuffCache[gidxCacheWr]
+  #define cacheWriterInc() gidxCacheWr++
+
+  if (val == gCfgLog.uSeqStart) {
+    if (val == gCfgLog.uSeqStop) {
+      cacheWrite('\r');
+      cacheWrite('\n');
+    }
+    cacheWrite('[');
+    gidxCacheWr += mini_itoa(gTime.uHour, 10, 0, 1, cacheWritePtr);
+    cacheWrite(':');
+    gidxCacheWr += mini_itoa(gTime.uMinute, 10, 0, 1, cacheWritePtr);
+    cacheWrite(':');
+    gidxCacheWr += mini_itoa(gTime.uSecond, 10, 0, 1, cacheWritePtr);
+    cacheWrite('.');
+    gidxCacheWr += mini_itoa(gTime.uMilliSec, 10, 0, 1, cacheWritePtr);
+    cacheWrite(']');
+  } else if (val == gCfgLog.uSeqStop) {
+    cacheWrite('\r');
+    cacheWrite('\n');
+  } else {
+    switch (gCfgLog.cOutputFormatter) {
+    case 'u':
+      gidxCacheWr += mini_itoa(val, 10, 0, 1, cacheWritePtr);
+      cacheWrite(' ');
+      break;
+    case 'x':
+    case 'X':
+      gidxCacheWr += mini_itoa(val, 16, (gCfgLog.cOutputFormatter=='X'), 1, cacheWritePtr);
+      cacheWrite(' ');
+      break;
+    case 'c':
+    default:
+      cacheWrite(val & 0xFF);
+    }
+  }
+
+_write_buff:
+  if(gidxCacheWr >= (FF_MIN_SS-20)) {
+    f_write(&ghFile, gbuffCache, gidxCacheWr, &nBytesAccessed);
+    if (nBytesAccessed != gidxCacheWr) {
+      gHMI.u8OperationalState = APP_LOGGING_ERROR;
+    }
+    gidxCacheWr = 0;
+    return nBytesAccessed;
+  } else {
+    return 0;
+  }
+}
+#else
 static inline int doWriteLog(uint16_t val) {
   char buff[20];
   UINT nBytesAccessed;
@@ -379,6 +450,7 @@ _write_buff:
 
   return bytes2write;
 }
+#endif
 
 int main(void) {
   SystemInit();
@@ -407,22 +479,24 @@ int main(void) {
   // TIM2->SMCFGR <- reset value is good
   TIM2->DMAINTENR = TIM_IT_Update;
 
-  gCfgLog.cOutputFormatter = 0;
+  gCfgLog.cOutputFormatter = gTime.uYear = 0;
   gHMI.u8OperationalState = APP_LOGGING_OFF;
   gHMI.u8zKey = GPIOC->INDR & APP_KEY_START_STOP;
 
   __enable_irq();
   NVIC_EnableIRQ(TIM2_IRQn);
 
-  printf_("Starting demo\n");
-
   while (1) {
     if (gHMI.u8OperationalState == APP_LOGGING_ON) {
       FRESULT tmp = f_mount(&gFsFAT, "", 0); // lazy mount, saves some 100bytes of ROM
       printf_("mount: %d\n", tmp);
       if (tmp == FR_OK) {
+        #if (APP_CONF_RELOAD_CFG_ON_START == 0)
         if (gCfgLog.cOutputFormatter == 0)
+        #endif
+        {
           tmp = doConfig();
+        }
 
         if (tmp == FR_OK) {
           tmp = doCreateNewLog();
@@ -454,7 +528,7 @@ int main(void) {
               uint32_t head = (APP_UART_RX_BUFF_SZ - UART_DMA_Rx->CNTR);
               // dbgDBG1_HIGH();
               while (tail != head) {
-                printf_("%u<->%u\n", tail, head);
+                // printf_("%u<->%u\n", tail, head);
                 APP_STATUS_LED1_OFF();
                 tmp = doWriteLog(gu16buffRx[tail++]);
                 tail = tail % APP_UART_RX_BUFF_SZ;
@@ -471,6 +545,15 @@ int main(void) {
               }
               #endif
             }
+
+            #if (APP_CONF_CACHE_BUFF)
+            if (gidxCacheWr) {
+              #define nBytesAccessed tail
+              f_write(&ghFile, gbuffCache, gidxCacheWr, &nBytesAccessed);
+              #undef nBytesAccessed
+            }
+            #endif
+
             f_close(&ghFile);
           } else {
             printf_("doCreateNewLog:%d\n", tmp);

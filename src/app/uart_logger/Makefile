@@ -17,9 +17,26 @@ ifeq ($(APP_CONF_RUNNING_LOG), 0)
 	EXTRA_CFLAGS+=-DAPP_CONF_RUNNING_LOG=0
 endif
 
-# by default periodic sync is enabled
+# by default write cache is enabled
+ifeq ($(APP_CONF_CACHE_BUFF), 0)
+	EXTRA_CFLAGS+=-DAPP_CONF_CACHE_BUFF=0
+endif
+
+# by default periodic sync is enabled when write cache is not enabled
 ifeq ($(APP_CONF_PERIODIC_SYNC), 0)
 	EXTRA_CFLAGS+=-DAPP_CONF_PERIODIC_SYNC=0
+endif
+
+# by default config.txt is read every time before logging start
+ifeq ($(APP_CONF_RELOAD_CFG_ON_START), 0)
+	EXTRA_CFLAGS+=-DAPP_CONF_RELOAD_CFG_ON_START=0
+endif
+
+# by default internal RTC is not re-initialized every time during config.txt read
+# this allows us to keep the RTC as close as to real world.
+# note: RTC is initialized at least once after power ON
+ifeq ($(APP_CONF_RELOAD_TIME_ON_START), 1)
+	EXTRA_CFLAGS+=-DAPP_CONF_RELOAD_TIME_ON_START=1
 endif
 
 include ../../ch32fun/ch32fun.mk
