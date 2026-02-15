@@ -66,7 +66,7 @@ Example:    1
 ```
 output formatter: logger output encode format
 range:            c - store the UART data in a transparent 8-bit ASCII raw
-                  d - store the UART data as decimal value
+                  u - store the UART data as unsigned decimal value
                   x - store the UART data as hexadecimal value
                   X - store the UART data as hexadecimal value (all caps)
 Example:          x
@@ -134,6 +134,7 @@ TODO
 - Tested baud
   - 115200
   - 750000
+  - 921600
 - Data bits
   - 8
   - 9
@@ -143,10 +144,15 @@ TODO
   - 2
 - Logging format
   - `c` - ASCII characters
+  - `u` - unsigned decimal
   - `x`/`X` - Hexadecimal
 - Seq start/Seq stop
   - `\r`
+  - `0xFF`
   - `0x1CC`
+
+### Sample log output
+[Test log results](docs/log_output.md)
 
 ### Thanks to various open source code base helped realizing the project
 

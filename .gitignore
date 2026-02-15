@@ -67,3 +67,5 @@ compile_commands.json
 .cache
 src/ch32fun/generated_*.ld
 **/.DS_Store
+
+analysis/

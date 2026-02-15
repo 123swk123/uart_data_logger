@@ -230,7 +230,7 @@ static inline FRESULT doConfig(void) {
     // read configured time
     // pBuff = f_gets(buff, sizeof(buff)-1, &ghFile);
     #if (APP_CONF_RELOAD_TIME_ON_START == 0)
-    if(gTime.uYear > 1980)
+    if(gTime.uYear < 1980)
     #endif
     {
       pBuff = _f_gets(buff, &ghFile);
@@ -504,6 +504,7 @@ int main(void) {
             UART_DMA_Rx->CFGR |= DMA_CFGR1_EN;
             // uint16_t* tail = &gu16buffRx[0];
             uint32_t tail = 0;
+            gidxCacheWr = 0;
 
             // do the first header write
             doWriteLog(gCfgLog.uSeqStart);
@@ -550,6 +551,7 @@ int main(void) {
             if (gidxCacheWr) {
               #define nBytesAccessed tail
               f_write(&ghFile, gbuffCache, gidxCacheWr, &nBytesAccessed);
+              gidxCacheWr = 0;
               #undef nBytesAccessed
             }
             #endif
