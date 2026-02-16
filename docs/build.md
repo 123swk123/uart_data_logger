@@ -30,3 +30,6 @@ by the way the default setting is the optimized version that is suitable for mos
 ### To clean
 
 `make -C src/app/uart_logger clangd_clean clean`
+
+## [Pre-built binaries](https://github.com/123swk123/uart_data_logger/releases)
+
