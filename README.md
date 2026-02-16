@@ -121,9 +121,7 @@ Example:  0
 4. missing [head](src/card_config/head) in the root of SD card
 5. Invalid / Un-recognizable contents in [config.txt](src/card_config/config.txt) or [head](src/card_config/head)
 
-## How to build
-
-TODO
+## [How to build](docs/build.md)
 
 ## Tested features
 
