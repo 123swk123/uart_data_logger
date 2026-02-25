@@ -34,11 +34,9 @@ void TIM2_IRQHandler(void) {
 
   // printf_("%u %u\n", key_exclusion_period, gHMI.u8OperationalState);
 
-  if (gHMI.u8OperationalState == APP_LOGGING_OFF)
-    APP_STATUS_LED1_OFF();
-  else if (gHMI.u8OperationalState == APP_LOGGING_ON)
+  if (gHMI.u8OperationalState == APP_LOGGING_ON)
     APP_STATUS_LED1_ON();
-  else {
+  else if (gHMI.u8OperationalState == APP_LOGGING_ERROR) {
     // Error state
     APP_STATUS_LED1_TOGGLE();
   }

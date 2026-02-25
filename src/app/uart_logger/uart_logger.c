@@ -13,7 +13,7 @@ FIL ghFile;
 uint16_t gu16buffRx[APP_UART_RX_BUFF_SZ];
 
 #if (APP_CONF_RUNNING_LOG)
-static char gbuffCache[FF_MIN_SS];
+static char gbuffCache[FF_MIN_SS+30];
 static uint32_t gidxCacheWr = 0;
 #endif
 
@@ -193,6 +193,7 @@ static inline FRESULT doConfig(void) {
     // DMAR:En
     USART1->CTLR3 = USART_CTLR3_DMAR;
 
+    UART_DMA_Rx->CFGR = 0;
     UART_DMA_Rx->PADDR = (ptrdiff_t)&USART1->DATAR;
     UART_DMA_Rx->MADDR = (ptrdiff_t)gu16buffRx;
     UART_DMA_Rx->CNTR = APP_UART_RX_BUFF_SZ;
@@ -385,7 +386,7 @@ static inline int doWriteLog(uint16_t val) {
   }
 
 _write_buff:
-  if(gidxCacheWr >= (FF_MIN_SS-20)) {
+  if(gidxCacheWr >= FF_MIN_SS) {
     f_write(&ghFile, gbuffCache, gidxCacheWr, &nBytesAccessed);
     if (nBytesAccessed != gidxCacheWr) {
       gHMI.u8OperationalState = APP_LOGGING_ERROR;
@@ -423,22 +424,20 @@ static inline int doWriteLog(uint16_t val) {
   } else if (val == gCfgLog.uSeqStop) {
     buff[0] = '\r';
     buff[1] = '\n';
-    bytes2write = 2;
+    bytes2write += 2;
   } else {
     switch (gCfgLog.cOutputFormatter) {
     case 'u':
-      bytes2write = mini_itoa(val, 10, 0, 1, buff);
+      bytes2write += mini_itoa(val, 10, 0, 1, buff);
       break;
     case 'x':
-      bytes2write = mini_itoa(val, 16, 0, 1, buff);
-      break;
     case 'X':
-      bytes2write = mini_itoa(val, 16, 1, 1, buff);
+      bytes2write += mini_itoa(val, 16, 0, (gCfgLog.cOutputFormatter=='X'), buff);
       break;
     case 'c':
     default:
       buff[0] = val & 0xFF;
-      bytes2write = 1;
+      bytes2write += 1;
     }
   }
 
@@ -501,6 +500,8 @@ int main(void) {
         if (tmp == FR_OK) {
           tmp = doCreateNewLog();
           if (tmp == FR_OK) {
+            UART_DMA_Rx->MADDR = (ptrdiff_t)gu16buffRx;
+            UART_DMA_Rx->CNTR = APP_UART_RX_BUFF_SZ;
             UART_DMA_Rx->CFGR |= DMA_CFGR1_EN;
             // uint16_t* tail = &gu16buffRx[0];
             uint32_t tail = 0;
@@ -528,8 +529,8 @@ int main(void) {
               #else
               uint32_t head = (APP_UART_RX_BUFF_SZ - UART_DMA_Rx->CNTR);
               // dbgDBG1_HIGH();
+              printf_("%x<->%x\n", tail, head);
               while (tail != head) {
-                // printf_("%u<->%u\n", tail, head);
                 APP_STATUS_LED1_OFF();
                 tmp = doWriteLog(gu16buffRx[tail++]);
                 tail = tail % APP_UART_RX_BUFF_SZ;
@@ -572,6 +573,9 @@ int main(void) {
         gHMI.u8OperationalState = APP_LOGGING_ERROR;
       }
     } else {
+      if (gHMI.u8OperationalState == APP_LOGGING_OFF)
+        APP_STATUS_LED1_OFF();
+      
       // Turn off UART Rx DMA
       UART_DMA_Rx->CFGR &= ~DMA_CFGR1_EN;
     }
