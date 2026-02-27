@@ -71,7 +71,7 @@
 
 #define APP_KEY_START_STOP    GPIO_Pin_3
 
-#define APP_TIMER_TICK_PERIOD 100 /*100 milli-sec*/
+#define APP_TIMER_TICK_PERIOD 50 /*milli-sec*/
 #define APP_UART_RX_BUFF_SZ   128
 
 #define UART_DMA_Rx           DMA1_Channel5

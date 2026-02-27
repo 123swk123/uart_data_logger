@@ -25,7 +25,7 @@ void TIM2_IRQHandler(void) {
         // switch open => high
         // switch close => low
         gHMI.u8OperationalState = (gHMI.u8OperationalState == APP_LOGGING_OFF) ? APP_LOGGING_ON : APP_LOGGING_OFF;
-        key_exclusion_period = 10;  // set 1 seconds exclusion period
+        key_exclusion_period = (1000/APP_TIMER_TICK_PERIOD);  // set 1 seconds exclusion period
       }
     }
   } else {
@@ -36,13 +36,13 @@ void TIM2_IRQHandler(void) {
 
   if (gHMI.u8OperationalState == APP_LOGGING_ON)
     APP_STATUS_LED1_ON();
-  else if (gHMI.u8OperationalState == APP_LOGGING_ERROR) {
-    // Error state
-    APP_STATUS_LED1_TOGGLE();
-  }
 
   gTime.uMilliSec += APP_TIMER_TICK_PERIOD;
   if (gTime.uMilliSec == 1000) {
+    if (gHMI.u8OperationalState == APP_LOGGING_ERROR) {
+      // Error state
+      APP_STATUS_LED1_TOGGLE();
+    }
     gTime.uMilliSec = 0;
     if (++gTime.uSecond == 60) {
       gTime.uSecond = 0;

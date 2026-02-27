@@ -504,7 +504,7 @@ int main(void) {
             UART_DMA_Rx->CNTR = APP_UART_RX_BUFF_SZ;
             UART_DMA_Rx->CFGR |= DMA_CFGR1_EN;
             // uint16_t* tail = &gu16buffRx[0];
-            uint32_t tail = 0;
+            volatile uint32_t tail = 0;
             gidxCacheWr = 0;
 
             // do the first header write
@@ -527,13 +527,13 @@ int main(void) {
               }
               // dbgDBG1_LOW();
               #else
-              uint32_t head = (APP_UART_RX_BUFF_SZ - UART_DMA_Rx->CNTR);
+              #define head (APP_UART_RX_BUFF_SZ - UART_DMA_Rx->CNTR)
               // dbgDBG1_HIGH();
               printf_("%x<->%x\n", tail, head);
               while (tail != head) {
                 APP_STATUS_LED1_OFF();
-                tmp = doWriteLog(gu16buffRx[tail++]);
-                tail = tail % APP_UART_RX_BUFF_SZ;
+                tmp = doWriteLog(gu16buffRx[tail]);
+                tail = (tail+1) % APP_UART_RX_BUFF_SZ;
               }
               // dbgDBG1_LOW();
               #endif

@@ -148,10 +148,10 @@ static int wait_ready(        /* 1:Ready, 0:Timeout */
   // SysTick->CTLR /*|= (1<<0)*/ += 1;  //start system counter
   drvSystick_Setms(wt);
 
+  GPIOC->CFGLR = SPI_GPIO_MOSI_HIGH;
+  SPI_DMA_Reset_Tx_Rx();
   do {
     // DMA1->INTFCR = SPI_DMA_FLAGS_Tx_Rx;
-    GPIOC->CFGLR = SPI_GPIO_MOSI_HIGH;
-    SPI_DMA_Reset_Tx_Rx();
     SPI_DMA_Start_Tx_Rx(1);
     /* This loop takes a time. Insert rot_rdq() here for multitask envilonment. */
     SPI_DMA_Wait_For_Rx();
@@ -455,10 +455,9 @@ DSTATUS disk_initialize(BYTE pdrv /* Physical drive nmuber to identify the drive
     SPI1->CTLR1 &= ~(0b111 << 3);
     // using `if` instead of `if-else-if-else` saves ROM by 140 bytes at an expense of little more execution time.
     if (n >= 0x28)
-      /*SPI1->CTLR1 |= SPI_BaudRatePrescaler_2;*/ SPI1->HSCR = 1;
+      /* SPI1->CTLR1 |= SPI_BaudRatePrescaler_2; */ SPI1->HSCR = 1;
     if ((n >= 0x25) && (n <= 0x27))
-      SPI1->CTLR1 |=
-          SPI_BaudRatePrescaler_4; // TODO: should be pre-scaler 2, but some reason data write corrupts @ 25MHz
+      SPI1->CTLR1 |= SPI_BaudRatePrescaler_2;
     if ((n >= 0x21) && (n <= 0x24))
       SPI1->CTLR1 |= SPI_BaudRatePrescaler_4;
     if ((n >= 0x1C) && (n <= 0x20))
