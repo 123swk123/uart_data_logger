@@ -31,6 +31,10 @@
                                     SPI_DMA_Tx->CNTR = count; \
                                     SPI_DMA_Tx->CFGR |= DMA_CFGR1_EN
 
+#define SPI_DMA_Start_Rx(count)     DMA1->INTFCR = SPI_DMA_FLAGS_Tx_Rx; \
+                                    SPI_DMA_Rx->CNTR = count; \
+                                    SPI_DMA_Rx->CFGR |= DMA_CFGR1_EN
+
 #define SPI_DMA_Reset_Tx_Rx()       SPI_DMA_Tx->CFGR &= ~DMA_CFGR1_EN;SPI_DMA_Rx->CFGR &= ~DMA_CFGR1_EN
 
 #define SPI_DMA_Reset_Tx()          SPI_DMA_Tx->CFGR &= ~DMA_CFGR1_EN
@@ -59,8 +63,6 @@
 #define CS_HIGH()              GPIOC->BSHR = GPIO_BSHR_BS4
 #define CS_LOW()               GPIOC->BSHR = GPIO_BSHR_BR4
 
-#define drvSysTck_Delay_Sync() while (SysTick->SR == 0)
-
 /* MMC/SD command */
 #define CMD0   (0)         /* GO_IDLE_STATE */
 #define CMD1   (1)         /* SEND_OP_COND (MMC) */
@@ -88,14 +90,14 @@ static BYTE CardType;                      /* Card type flags */
 
 static uint8_t gu8BuffSPITx[10];
 
-// static uint8_t gu8BuffSPIRx[10];'
-#define gu8BuffSPIRx gu8BuffSPITx
+static uint8_t gu8BuffSPIRx[10];
+// #define gu8BuffSPIRx gu8BuffSPITx
 
 #ifdef FUNCONF_DEBUG
 static void _dump_buffer(uint8_t *buff,
                          uint32_t len_alg16) {
   while (len_alg16--) {
-    printf_("%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", buff[0], buff[1],
+    printf_dbg("%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", buff[0], buff[1],
             buff[2], buff[3], buff[4], buff[5], buff[6], buff[7], buff[8], buff[9], buff[10], buff[11], buff[12],
             buff[13], buff[14], buff[15]);
     buff += 16;
@@ -127,7 +129,7 @@ static inline void _spi_init(void) {
                      DMA_PeripheralDataSize_Byte | DMA_MemoryDataSize_Byte | DMA_Mode_Normal | DMA_Priority_Medium |
                      DMA_M2M_Disable;
   SPI_DMA_Tx->CFGR = DMA_DIR_PeripheralDST | DMA_PeripheralInc_Disable | DMA_MemoryInc_Enable |
-                     DMA_PeripheralDataSize_Byte | DMA_MemoryDataSize_Byte | DMA_Mode_Normal | DMA_Priority_Medium |
+                     DMA_PeripheralDataSize_Byte | DMA_MemoryDataSize_Byte | DMA_Mode_Normal | DMA_Priority_High |
                      DMA_M2M_Disable;
 
   SPI1->CTLR1 |= CTLR1_SPE_Set;
@@ -244,8 +246,9 @@ static BYTE send_cmd(          /* Return value: R1 resp (bit7==1:Failed to send)
   if (cmd == CMD12) { /*gu8BuffSPITx[0]=0xFF;*/
     SPI_DMA_Start_Tx_Rx(1);
   }; /* Diacard following one byte when CMD12 */
-  n = 10; /* Wait for response (10 bytes max) */
+  n = 10*3; /* Wait for response (10 bytes max) */
   do {
+    
     // res = xchg_spi(0xFF);
     SPI_DMA_Start_Tx_Rx(1);
     SPI_DMA_Wait_For_Rx();
@@ -261,7 +264,9 @@ static BYTE send_cmd(          /* Return value: R1 resp (bit7==1:Failed to send)
   //     if(!(res & 0x80)) break;
   // }
 
-  printf_("send_cmd %d: %02x\n", cmd, res);
+  printf_info("send_cmd %d: %02x\n", cmd, res);
+  // drvSystick_Setms(1);
+  // drvSystick_WaitForTimeOut();
   return res; /* Return received response */
 }
 
@@ -282,7 +287,7 @@ static int rcvr_datablock(            /* 1:OK, 0:Error */
     /* This loop will take a time. Insert rot_rdq() here for multitask envilonment. */
   } while ((gu8BuffSPIRx[0] == 0xFF) && drvSystick_Running());
   if (gu8BuffSPIRx[0] != 0xFE) {
-    printf_("rcvr_datablock:%02x\n", gu8BuffSPIRx[0]);
+    printf_dbg("rcvr_datablock:%02x\n", gu8BuffSPIRx[0]);
     return 0;
   } /* Function fails if invalid DataStart token or timeout */
 
@@ -451,11 +456,12 @@ DSTATUS disk_initialize(BYTE pdrv /* Physical drive nmuber to identify the drive
     // |   0    | 256    |0.1875 |  0x00  |  0x07  | 100kb  | 350kb  |
     // +--------+--------+-------+--------+--------+--------+--------+
     n = (csd[15 - 12] >> 3) | ((csd[15 - 12] << 4) & 0x70);
-    printf_("TRANS_SPEED: %x->%x\n", csd[15 - 12], n);
+    printf_dbg("TRANS_SPEED: %x->%x\n", csd[15 - 12], n);
     SPI1->CTLR1 &= ~(0b111 << 3);
     // using `if` instead of `if-else-if-else` saves ROM by 140 bytes at an expense of little more execution time.
-    if (n >= 0x28)
-      /* SPI1->CTLR1 |= SPI_BaudRatePrescaler_2; */ SPI1->HSCR = 1;
+    if (n >= 0x28) {
+      SPI1->CTLR1 |= SPI_BaudRatePrescaler_2; SPI1->HSCR = 1;
+    }
     if ((n >= 0x25) && (n <= 0x27))
       SPI1->CTLR1 |= SPI_BaudRatePrescaler_2;
     if ((n >= 0x21) && (n <= 0x24))
@@ -475,7 +481,7 @@ DSTATUS disk_initialize(BYTE pdrv /* Physical drive nmuber to identify the drive
     // SPI1->CTLR1 &= ~(0b111<<3);SPI1->CTLR1 |= n;
   }
 
-  printf_("disk_init: %u\n", Stat);
+  printf_dbg("disk_init: %u\n", Stat);
   return Stat;
 }
 
@@ -508,7 +514,7 @@ DRESULT disk_read(BYTE drv,     /* Physical drive number (0) */
   if (!(CardType & CT_BLOCK))
     sect *= 512; /* LBA ot BA conversion (byte addressing cards) */
 
-  printf_("rd sect:%x\n", sect);
+  printf_dbg("rd sect:%x\n", sect);
 
   if (count == 1) { /* Single sector read */
     // uint8_t n = 3;
@@ -722,10 +728,10 @@ DRESULT disk_ioctl(BYTE drv,  /* Physical drive number (0) */
 
     _deselect();
 
-    printf_("disk_ioctl[%d]:%d\n", cmd, res);
+    printf_dbg("disk_ioctl[%d]:%d\n", cmd, res);
     return res;
 #else
-  printf_("disk_ioctl[%d]\n", cmd);
+  printf_dbg("disk_ioctl[%d]\n", cmd);
   if ((cmd == CTRL_SYNC) && _select()) {
     return RES_OK;
   }

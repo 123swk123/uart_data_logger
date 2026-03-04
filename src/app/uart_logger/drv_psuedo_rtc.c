@@ -13,7 +13,7 @@ stCFGTime gTime;
 INTERRUPT_DECORATOR void TIM2_IRQHandler(void);
 void TIM2_IRQHandler(void) {
   static const uint8_t days2month[] = MAP_DAYS2MONTH;
-//   printf_("IRQ TIM2:%04X\n", TIM2->INTFR);
+//   printf_dbg("IRQ TIM2:%04X\n", TIM2->INTFR);
   TIM2->INTFR = 0;
 
   if(key_exclusion_period == 0) {
@@ -32,7 +32,7 @@ void TIM2_IRQHandler(void) {
     key_exclusion_period--;
   }
 
-  // printf_("%u %u\n", key_exclusion_period, gHMI.u8OperationalState);
+  // printf_dbg("%u %u\n", key_exclusion_period, gHMI.u8OperationalState);
 
   if (gHMI.u8OperationalState == APP_LOGGING_ON)
     APP_STATUS_LED1_ON();
@@ -44,6 +44,9 @@ void TIM2_IRQHandler(void) {
       APP_STATUS_LED1_TOGGLE();
     }
     gTime.uMilliSec = 0;
+    #if (APP_CONF_PERIODIC_SYNC)
+    gTime.uPeriodicSync++;
+    #endif
     if (++gTime.uSecond == 60) {
       gTime.uSecond = 0;
       if (++gTime.uMinute == 60) {

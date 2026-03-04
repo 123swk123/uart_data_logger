@@ -6,16 +6,24 @@
 #include <stdint.h>
 #include <stdio.h>
 
-stHMI gHMI;
-stCFGLog gCfgLog;
+#if (FF_MULTI_PARTITION == 1)
+PARTITION VolToPart[FF_VOLUMES] = {
+  {0, 1},     /* "0:" ==> 1st partition on the pd#0 */
+};
+#endif
+
 FATFS gFsFAT;
 FIL ghFile;
+
 uint16_t gu16buffRx[APP_UART_RX_BUFF_SZ];
 
-#if (APP_CONF_RUNNING_LOG)
+#if (APP_CONF_CACHE_BUFF)
 static char gbuffCache[FF_MIN_SS+30];
 static uint32_t gidxCacheWr = 0;
 #endif
+
+stHMI gHMI;
+stCFGLog gCfgLog;
 
 int _write(int fd,
            const char *buf,
@@ -23,6 +31,7 @@ int _write(int fd,
   int i = 0;
   int writeSize = size;
 
+  #if 0
   volatile union {
     uint32_t u32;
     struct {
@@ -41,6 +50,7 @@ int _write(int fd,
       uint8_t b2;
     };
   } *data0 = (void *)&size;
+  #endif
   do {
     /**
      * data0  data1 8 bytes
@@ -96,17 +106,18 @@ static char *_f_gets(char *buff,
   if (buff == NULL) {
     // skip this line
     while (c != '\n') {
-      f_read(&ghFile, &c, 1, &nBytesAccessed);
+      f_read(f, &c, 1, &nBytesAccessed);
       if (nBytesAccessed == 0) {
-        return buff;
+        break;
       }
     }
     return buff;
   } else {
     while (c != '\n') {
-      f_read(&ghFile, &c, 1, &nBytesAccessed);
+      f_read(f, &c, 1, &nBytesAccessed);
       if (nBytesAccessed == 0) {
-        return NULL;
+        *buff++ = '\0';
+        break;
       }
       if (c == '\n')
         *buff++ = '\0';
@@ -156,14 +167,14 @@ static inline FRESULT doConfig(void) {
       rslt = FR_INVALID_PARAMETER;
       goto _doConfig_Exit;
     }
-    puts_(buff);
+    puts_dbg(buff);
     // skip first 3 chars 's1:'
     tmp = c_sscanf(&buff[3], "%u%u%u%u%*c%c%u%u", &cfgUART.uBaud, &cfgUART.uBits, &cfgUART.uParity, &cfgUART.uStop,
                    &gCfgLog.cOutputFormatter, &gCfgLog.uSeqStart, &gCfgLog.uSeqStop);
-    printf_("s1:%u,%u,%u,%u,%u,%u,%c|\n", cfgUART.uBaud, cfgUART.uBits, cfgUART.uParity, cfgUART.uStop, gCfgLog.uSeqStart,
+    printf_dbg("s1:%u,%u,%u,%u,%u,%u,%c|\n", cfgUART.uBaud, cfgUART.uBits, cfgUART.uParity, cfgUART.uStop, gCfgLog.uSeqStart,
             gCfgLog.uSeqStop, gCfgLog.cOutputFormatter);
     if (tmp != 8) {
-      rslt = FR_INVALID_PARAMETER;
+      rslt = FR_INVALID_PARAMETER+1;
       goto _doConfig_Exit;
     }
 
@@ -199,7 +210,7 @@ static inline FRESULT doConfig(void) {
     UART_DMA_Rx->CNTR = APP_UART_RX_BUFF_SZ;
     UART_DMA_Rx->CFGR = DMA_DIR_PeripheralSRC | DMA_PeripheralInc_Disable | DMA_MemoryInc_Enable |
                         DMA_PeripheralDataSize_HalfWord | DMA_MemoryDataSize_HalfWord | DMA_Mode_Circular |
-                        DMA_Priority_Medium | DMA_M2M_Disable;
+                        DMA_Priority_VeryHigh | DMA_M2M_Disable;
 
   #if 0
         uint32_t integerdivider = ((25 * SYSCLK_FREQ) / (4 * cfgUART.uBaud));
@@ -225,7 +236,7 @@ static inline FRESULT doConfig(void) {
     USART1->GPR = 0;
 
     USART1->CTLR1 |= USART_CTLR1_UE;
-    printf_("%04X, %04X, %04X, %04X\n", USART1->CTLR1, USART1->CTLR2, USART1->CTLR3, USART1->BRR);
+    printf_dbg("%04X, %04X, %04X, %04X\n", USART1->CTLR1, USART1->CTLR2, USART1->CTLR3, USART1->BRR);
 #endif
 
     // read configured time
@@ -236,12 +247,12 @@ static inline FRESULT doConfig(void) {
     {
       pBuff = _f_gets(buff, &ghFile);
       if (pBuff == 0) {
-        rslt = FR_INVALID_PARAMETER;
+        rslt = FR_INVALID_PARAMETER+2;
         goto _doConfig_Exit;
       }
-      puts_(buff);
+      puts_dbg(buff);
       tmp = c_sscanf(&buff[2], "%u%u%u%u%u", &gTime.uYear, &gTime.uMonth, &gTime.uDay, &gTime.uHour, &gTime.uMinute);
-      printf_("t:%d,%d,%d,%d,%d\n", gTime.uYear, gTime.uMonth, gTime.uDay, gTime.uHour, gTime.uMinute);
+      printf_dbg("t:%u,%u,%u,%u,%u\n", gTime.uYear, gTime.uMonth, gTime.uDay, gTime.uHour, gTime.uMinute);
       gTime.uSecond = gTime.uMilliSec = 0;
       if (tmp != 5) {
         rslt = FR_INVALID_PARAMETER;
@@ -277,7 +288,7 @@ static inline FRESULT doCreateNewLog(void) {
   *pBuff++ = 'g';
   *pBuff++ = '\0';
 
-  puts_(buff);
+  puts_dbg(buff);
   FRESULT rslt = f_open(&ghFile, buff, FA_CREATE_NEW | FA_WRITE);
   if (rslt == FR_OK) {
     return rslt;
@@ -290,7 +301,11 @@ static inline FRESULT doCreateNewLog(void) {
 static inline FRESULT doCreateNewLog(void) {
   FRESULT rslt = f_open(&ghFile, "head", FA_READ | FA_WRITE);
   if (rslt == FR_OK) {
+    #if (APP_CONF_CACHE_BUFF == 1)
+    #define buff gbuffCache
+    #else
     char buff[16];
+    #endif
     UINT nBytesAccessed;
     int tmp;
 #define nFileIdx nBytesAccessed
@@ -328,18 +343,20 @@ static inline FRESULT doCreateNewLog(void) {
     *pBuff++ = 'o';
     *pBuff++ = 'g';
     *pBuff++ = '\0';
-    puts_(buff);
+    puts_dbg(buff);
     rslt = f_open(&ghFile, buff, FA_CREATE_NEW | FA_WRITE);
-    if (rslt != FR_OK) {
-      goto _doCreateNewLog_Exit;
-    }
     return rslt;
 
 #undef nFileIdx
+  } else {
+    return rslt;
   }
 _doCreateNewLog_Exit:
   f_close(&ghFile);
   return rslt;
+  #if (APP_CONF_CACHE_BUFF == 1)
+    #undef buff
+  #endif
 }
 #endif
 
@@ -387,12 +404,21 @@ static inline int doWriteLog(uint16_t val) {
 
 _write_buff:
   if(gidxCacheWr >= FF_MIN_SS) {
-    f_write(&ghFile, gbuffCache, gidxCacheWr, &nBytesAccessed);
-    if (nBytesAccessed != gidxCacheWr) {
+    NVIC_DisableIRQ(TIM2_IRQn);
+    FRESULT tmp = f_write(&ghFile, gbuffCache, FF_MIN_SS, &nBytesAccessed);
+    NVIC_EnableIRQ(TIM2_IRQn);
+    if (nBytesAccessed == 0) {
       gHMI.u8OperationalState = APP_LOGGING_ERROR;
+      printf_err("doWrite: %u\n", tmp);
+      return -1;
     }
-    gidxCacheWr = 0;
-    return nBytesAccessed;
+    gidxCacheWr -= nBytesAccessed;
+    if (gidxCacheWr) {
+      MEM_DMA_Reset_Mover();
+      MEM_DMA_Start_Mover(&gbuffCache[FF_MIN_SS], gidxCacheWr);
+    }
+    // f_sync(&ghFile);
+    return FF_MIN_SS;
   } else {
     return 0;
   }
@@ -478,17 +504,25 @@ int main(void) {
   // TIM2->SMCFGR <- reset value is good
   TIM2->DMAINTENR = TIM_IT_Update;
 
+  #if APP_CONF_CACHE_BUFF
+  MEM_DMA_Mover->CFGR = 0;
+  MEM_DMA_Mover->MADDR = (ptrdiff_t)gbuffCache;
+  MEM_DMA_Mover->CFGR = DMA_DIR_PeripheralSRC | DMA_PeripheralInc_Enable | DMA_MemoryInc_Enable |
+                        DMA_PeripheralDataSize_Byte | DMA_MemoryDataSize_Byte |
+                        DMA_Mode_Normal | DMA_Priority_Low | DMA_M2M_Enable;
+  #endif
+
   gCfgLog.cOutputFormatter = gTime.uYear = 0;
   gHMI.u8OperationalState = APP_LOGGING_OFF;
   gHMI.u8zKey = GPIOC->INDR & APP_KEY_START_STOP;
 
-  __enable_irq();
   NVIC_EnableIRQ(TIM2_IRQn);
+  __enable_irq();
 
   while (1) {
     if (gHMI.u8OperationalState == APP_LOGGING_ON) {
-      FRESULT tmp = f_mount(&gFsFAT, "", 0); // lazy mount, saves some 100bytes of ROM
-      printf_("mount: %d\n", tmp);
+      FRESULT tmp = f_mount(&gFsFAT, "0:", 0); // lazy mount, saves some 100bytes of ROM
+      printf_info("mount: %u\n", tmp);
       if (tmp == FR_OK) {
         #if (APP_CONF_RELOAD_CFG_ON_START == 0)
         if (gCfgLog.cOutputFormatter == 0)
@@ -505,7 +539,9 @@ int main(void) {
             UART_DMA_Rx->CFGR |= DMA_CFGR1_EN;
             // uint16_t* tail = &gu16buffRx[0];
             volatile uint32_t tail = 0;
+            #if APP_CONF_CACHE_BUFF
             gidxCacheWr = 0;
+            #endif
 
             // do the first header write
             doWriteLog(gCfgLog.uSeqStart);
@@ -529,46 +565,56 @@ int main(void) {
               #else
               #define head (APP_UART_RX_BUFF_SZ - UART_DMA_Rx->CNTR)
               // dbgDBG1_HIGH();
-              printf_("%x<->%x\n", tail, head);
+              //printf_dbg("%x<->%x\n", tail, head);
               while (tail != head) {
                 APP_STATUS_LED1_OFF();
                 tmp = doWriteLog(gu16buffRx[tail]);
+                if(tmp < 0)
+                  break;
                 tail = (tail+1) % APP_UART_RX_BUFF_SZ;
               }
               // dbgDBG1_LOW();
               #endif
 
               #if (APP_CONF_PERIODIC_SYNC)
-              if (!(gTime.uMilliSec % (5 * APP_TIMER_TICK_PERIOD))) {
-                // @ every 1 sec if we have written anything
+              if (gTime.uPeriodicSync >= 5) {
+                // @ every 5 sec if we have written anything
+                gTime.uPeriodicSync = 0;
                 if ((int)tmp > 0) {
-                  f_sync(&ghFile);
+                  NVIC_DisableIRQ(TIM2_IRQn);
+                  if (f_sync(&ghFile) != FR_OK) {
+                    gHMI.u8OperationalState = APP_LOGGING_ERROR;
+                  }
+                  NVIC_EnableIRQ(TIM2_IRQn);
+                  tmp = 0;
                 }
               }
               #endif
             }
 
+            NVIC_DisableIRQ(TIM2_IRQn);
             #if (APP_CONF_CACHE_BUFF)
-            if (gidxCacheWr) {
+            if (gidxCacheWr && (gHMI.u8OperationalState == APP_LOGGING_ON)) {
               #define nBytesAccessed tail
-              f_write(&ghFile, gbuffCache, gidxCacheWr, &nBytesAccessed);
+              f_write(&ghFile, gbuffCache, gidxCacheWr, (UINT*)&nBytesAccessed);
               gidxCacheWr = 0;
               #undef nBytesAccessed
             }
             #endif
 
             f_close(&ghFile);
+            NVIC_EnableIRQ(TIM2_IRQn);
           } else {
-            printf_("doCreateNewLog:%d\n", tmp);
+            printf_err("doCreateNewLog:%u\n", tmp);
             gHMI.u8OperationalState = APP_LOGGING_ERROR;
           }
         } else {
-          printf_("doConfig:%d\n", tmp);
+          printf_err("doConfig:%u\n", tmp);
           gHMI.u8OperationalState = APP_LOGGING_ERROR;
         }
 
         f_unmount("");
-        printf_("Safe removal\n");
+        printf_info("Safe removal\n");
       } else {
         gHMI.u8OperationalState = APP_LOGGING_ERROR;
       }

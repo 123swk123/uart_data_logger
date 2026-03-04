@@ -13,12 +13,22 @@
   #define SYSCLK_FREQ FUNCONF_SYSTEM_CORE_CLOCK
   #define sprintf_    sprintf
   #if defined(FUNCONF_DEBUG)
-    #define printf_ printf
-    #define puts_ puts
+    // #define printf_ printf
+    // #define puts_ puts
+
+    #define printf_dbg printf
+    #define puts_dbg puts
   #else
-    #define printf_(...)
-    #define puts_(...)
+    // #define printf_(...)
+    // #define puts_(...)
+    
+    #define printf_dbg(...)
+    #define puts_dbg(...)
   #endif
+  #define printf_info printf
+  #define puts_info puts
+  #define printf_err printf
+  #define puts_err puts
 #else
   #include <ch32v00x.h>
 #endif
@@ -41,7 +51,9 @@
 
 #if APP_CONF_CACHE_BUFF
   // with write cache enabled, periodic sync is disabled by default
-  #define APP_CONF_PERIODIC_SYNC 0
+  #ifndef APP_CONF_PERIODIC_SYNC
+    #define APP_CONF_PERIODIC_SYNC 0
+  #endif
 #endif
 
 #ifndef APP_CONF_PERIODIC_SYNC
@@ -72,9 +84,18 @@
 #define APP_KEY_START_STOP    GPIO_Pin_3
 
 #define APP_TIMER_TICK_PERIOD 50 /*milli-sec*/
-#define APP_UART_RX_BUFF_SZ   128
+#define APP_UART_RX_BUFF_SZ   100
 
-#define UART_DMA_Rx           DMA1_Channel5
+#define UART_DMA_Rx                           DMA1_Channel5
+
+#define MEM_DMA_Mover                         DMA1_Channel1
+#define MEM_DMA_Start_Mover(src, count)       DMA1->INTFCR = DMA1_FLAG_GL1|DMA1_FLAG_TC1|DMA1_FLAG_HT1|DMA1_FLAG_TE1; \
+                                              MEM_DMA_Mover->PADDR = (ptrdiff_t)src; \
+                                              MEM_DMA_Mover->CNTR = (ptrdiff_t)count; \
+                                              MEM_DMA_Mover->CFGR |= DMA_CFGR1_EN
+#define MEM_DMA_Reset_Mover()                 MEM_DMA_Mover->CFGR &= ~DMA_CFGR1_EN
+#define MEM_DMA_Wait_For_Mover()              while ((DMA1->INTFR & (DMA1_FLAG_GL1|DMA1_FLAG_TC1|DMA1_FLAG_HT1|DMA1_FLAG_TE1)) == 0) \
+                                              ; \
 
 // using uint32 instead of uint16 __aligned(4) saves 50bytes
 typedef volatile struct {
@@ -85,6 +106,9 @@ typedef volatile struct {
   uint32_t uMinute /* __attribute_aligned__(4) */;
   uint16_t uSecond;
   uint16_t uMilliSec;
+  #if (APP_CONF_PERIODIC_SYNC == 1)
+  uint16_t uPeriodicSync;
+  #endif
 } stCFGTime;
 
 typedef struct {

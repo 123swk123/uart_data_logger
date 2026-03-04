@@ -26,6 +26,9 @@ endif
 ifeq ($(APP_CONF_PERIODIC_SYNC), 0)
 	EXTRA_CFLAGS+=-DAPP_CONF_PERIODIC_SYNC=0
 endif
+ifeq ($(APP_CONF_PERIODIC_SYNC), 1)
+	EXTRA_CFLAGS+=-DAPP_CONF_PERIODIC_SYNC=1
+endif
 
 # by default config.txt is read every time before logging start
 ifeq ($(APP_CONF_RELOAD_CFG_ON_START), 0)
