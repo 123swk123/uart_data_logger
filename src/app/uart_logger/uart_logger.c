@@ -1,10 +1,9 @@
+#include "drv_systick.h"
 #include "app_base.h"
 
 #include "ch32fun.h"
 #include "ch32v003hw.h"
 #include "ff.h"
-#include <stdint.h>
-#include <stdio.h>
 
 #if (FF_MULTI_PARTITION == 1)
 PARTITION VolToPart[FF_VOLUMES] = {
@@ -15,10 +14,10 @@ PARTITION VolToPart[FF_VOLUMES] = {
 FATFS gFsFAT;
 FIL ghFile;
 
-uint16_t gu16buffRx[APP_UART_RX_BUFF_SZ];
+static uint16_t gu16buffRx[APP_UART_RX_BUFF_SZ];
 
 #if (APP_CONF_CACHE_BUFF)
-static char gbuffCache[FF_MIN_SS+30];
+char gbuffCache[FF_MIN_SS+30];
 static uint32_t gidxCacheWr = 0;
 #endif
 
@@ -343,7 +342,7 @@ static inline FRESULT doCreateNewLog(void) {
     *pBuff++ = 'o';
     *pBuff++ = 'g';
     *pBuff++ = '\0';
-    puts_dbg(buff);
+    puts_info(buff);
     rslt = f_open(&ghFile, buff, FA_CREATE_NEW | FA_WRITE);
     return rslt;
 
@@ -367,6 +366,8 @@ static inline int doWriteLog(uint16_t val) {
   #define cacheWrite(x) gbuffCache[gidxCacheWr++]=x
   #define cacheWritePtr &gbuffCache[gidxCacheWr]
   #define cacheWriterInc() gidxCacheWr++
+
+  APP_STATUS_LED1_OFF();
 
   if (val == gCfgLog.uSeqStart) {
     if (val == gCfgLog.uSeqStop) {
@@ -428,6 +429,8 @@ static inline int doWriteLog(uint16_t val) {
   char buff[20];
   UINT nBytesAccessed;
   int bytes2write = 0;
+
+  APP_STATUS_LED1_OFF();
 
   if (val == gCfgLog.uSeqStart) {
     if (val == gCfgLog.uSeqStop) {
@@ -534,6 +537,13 @@ int main(void) {
         if (tmp == FR_OK) {
           tmp = doCreateNewLog();
           if (tmp == FR_OK) {
+            // do the first header write
+            doWriteLog(gCfgLog.uSeqStart);
+
+            // Delay_Ms(500);
+            tmp = drvSystick_Offset_Setms(500);
+            while (drvSystick_Offset_Running(tmp));
+
             UART_DMA_Rx->MADDR = (ptrdiff_t)gu16buffRx;
             UART_DMA_Rx->CNTR = APP_UART_RX_BUFF_SZ;
             UART_DMA_Rx->CFGR |= DMA_CFGR1_EN;
@@ -542,9 +552,6 @@ int main(void) {
             #if APP_CONF_CACHE_BUFF
             gidxCacheWr = 0;
             #endif
-
-            // do the first header write
-            doWriteLog(gCfgLog.uSeqStart);
 
             while (gHMI.u8OperationalState == APP_LOGGING_ON) {
               // while(USART_GetFlagStatus(USART1, USART_FLAG_RXNE) == RESET);
@@ -567,9 +574,9 @@ int main(void) {
               // dbgDBG1_HIGH();
               //printf_dbg("%x<->%x\n", tail, head);
               while (tail != head) {
-                APP_STATUS_LED1_OFF();
+                // APP_STATUS_LED1_OFF();
                 tmp = doWriteLog(gu16buffRx[tail]);
-                if(tmp < 0)
+                if(((int)tmp) < 0)
                   break;
                 tail = (tail+1) % APP_UART_RX_BUFF_SZ;
               }

@@ -1,5 +1,5 @@
 
-PREFIX=riscv32-unknown-linux-uclibc
+PREFIX:=riscv32-unknown-linux-uclibc
 
 all : build
 

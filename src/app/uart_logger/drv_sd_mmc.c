@@ -1,3 +1,5 @@
+#include "app_base.h"
+#include "ch32v003hw.h"
 #include "drv_systick.h"
 
 #include "ff.h"     /* Basic definitions of FatFs */
@@ -18,8 +20,8 @@
 // clang-format off
 #define SPI_DMA_Rx                  DMA1_Channel2
 #define SPI_DMA_Tx                  DMA1_Channel3
-#define SPI_DMA_FLAGS_Rx            DMA1_FLAG_GL2
-#define SPI_DMA_FLAGS_Tx            DMA1_FLAG_GL3
+#define SPI_DMA_FLAGS_Rx            (DMA1_FLAG_TC2)
+#define SPI_DMA_FLAGS_Tx            (DMA1_FLAG_TC3)
 #define SPI_DMA_FLAGS_Tx_Rx         (DMA1_FLAG_GL3 | DMA1_FLAG_TC3 | DMA1_FLAG_HT3 | DMA1_FLAG_TE3 | \
                                     DMA1_FLAG_GL2 | DMA1_FLAG_TC2 | DMA1_FLAG_HT2 | DMA1_FLAG_TE2)
 
@@ -27,22 +29,30 @@
                                     SPI_DMA_Tx->CFGR |= DMA_CFGR1_EN; \
                                     SPI_DMA_Rx->CFGR |= DMA_CFGR1_EN
 
-#define SPI_DMA_Start_Tx(count)     DMA1->INTFCR = SPI_DMA_FLAGS_Tx_Rx; \
-                                    SPI_DMA_Tx->CNTR = count; \
+#define SPI_DMA_Start_Tx(count)     SPI_DMA_Tx->CNTR = count; \
                                     SPI_DMA_Tx->CFGR |= DMA_CFGR1_EN
 
-#define SPI_DMA_Start_Rx(count)     DMA1->INTFCR = SPI_DMA_FLAGS_Tx_Rx; \
-                                    SPI_DMA_Rx->CNTR = count; \
+#define SPI_DMA_Start_Rx(count)     SPI_DMA_Rx->CNTR = count; \
                                     SPI_DMA_Rx->CFGR |= DMA_CFGR1_EN
 
-#define SPI_DMA_Reset_Tx_Rx()       SPI_DMA_Tx->CFGR &= ~DMA_CFGR1_EN;SPI_DMA_Rx->CFGR &= ~DMA_CFGR1_EN
+#define SPI_DMA_Debug()             if(DMA1->INTFR & (DMA1_FLAG_TE2|DMA1_FLAG_TE3)) {printf_dbg("err: %X, %X\n", DMA1->INTFR, SPI1->STATR);}
 
-#define SPI_DMA_Reset_Tx()          SPI_DMA_Tx->CFGR &= ~DMA_CFGR1_EN
+#define SPI_DMA_Reset_Tx_Rx()       SPI_DMA_Tx->CFGR &= ~DMA_CFGR1_EN;SPI_DMA_Rx->CFGR &= ~DMA_CFGR1_EN; \
+                                    (void)SPI1->DATAR;(void)SPI1->STATR;SPI1->STATR=0;DMA1->INTFCR=SPI_DMA_FLAGS_Tx_Rx
+
+#define SPI_DMA_Reset_Tx()          SPI_DMA_Tx->CFGR &= ~DMA_CFGR1_EN;(void)SPI1->DATAR;(void)SPI1->STATR; \
+                                    SPI1->STATR=0;DMA1->INTFCR = SPI_DMA_FLAGS_Tx_Rx
+
+#define SPI_DMA_Wait_For_Tx()       while ((DMA1->INTFR & SPI_DMA_FLAGS_Tx) == 0) \
+                                    ; \
+                                    while ((SPI1->STATR & (SPI_I2S_FLAG_BSY|SPI_I2S_FLAG_TXE))) \
+                                    ; \
+                                    SPI_DMA_Reset_Tx_Rx()
 
 #define SPI_DMA_Wait_For_Rx()       while ((DMA1->INTFR & SPI_DMA_FLAGS_Rx) == 0) \
                                     ; \
-                                    while (SPI1->STATR & SPI_I2S_FLAG_BSY) \
-                                    ; \
+                                    /*while ((SPI1->STATR & (SPI_I2S_FLAG_BSY|SPI_I2S_FLAG_RXNE))) \
+                                    ;*/ \
                                     SPI_DMA_Reset_Tx_Rx()
 
 // PC4|CS 	: GPIO, Push-Pull
@@ -85,6 +95,8 @@
 #define CMD55  (55)        /* APP_CMD */
 #define CMD58  (58)        /* READ_OCR */
 
+// extern char gbuffCache[FF_MIN_SS+30];
+
 static volatile DSTATUS Stat = STA_NOINIT; /* Physical drive status */
 static BYTE CardType;                      /* Card type flags */
 
@@ -126,10 +138,10 @@ static inline void _spi_init(void) {
   SPI_DMA_Tx->MADDR = (ptrdiff_t)gu8BuffSPITx;
   SPI_DMA_Rx->MADDR = (ptrdiff_t)gu8BuffSPIRx;
   SPI_DMA_Rx->CFGR = DMA_DIR_PeripheralSRC | DMA_PeripheralInc_Disable | DMA_MemoryInc_Enable |
-                     DMA_PeripheralDataSize_Byte | DMA_MemoryDataSize_Byte | DMA_Mode_Normal | DMA_Priority_Medium |
+                     DMA_PeripheralDataSize_Byte | DMA_MemoryDataSize_Byte | DMA_Mode_Normal | DMA_Priority_High |
                      DMA_M2M_Disable;
   SPI_DMA_Tx->CFGR = DMA_DIR_PeripheralDST | DMA_PeripheralInc_Disable | DMA_MemoryInc_Enable |
-                     DMA_PeripheralDataSize_Byte | DMA_MemoryDataSize_Byte | DMA_Mode_Normal | DMA_Priority_High |
+                     DMA_PeripheralDataSize_Byte | DMA_MemoryDataSize_Byte | DMA_Mode_Normal | DMA_Priority_Medium |
                      DMA_M2M_Disable;
 
   SPI1->CTLR1 |= CTLR1_SPE_Set;
@@ -148,7 +160,7 @@ static int wait_ready(        /* 1:Ready, 0:Timeout */
   // SysTick->CNT = 0;
   // SysTick->CMP=(wt*1000)*(SYSCLK_FREQ/8000000);/*1ms*/
   // SysTick->CTLR /*|= (1<<0)*/ += 1;  //start system counter
-  drvSystick_Setms(wt);
+  const uint32_t tickOffset = drvSystick_Offset_Setms(wt);
 
   GPIOC->CFGLR = SPI_GPIO_MOSI_HIGH;
   SPI_DMA_Reset_Tx_Rx();
@@ -157,8 +169,9 @@ static int wait_ready(        /* 1:Ready, 0:Timeout */
     SPI_DMA_Start_Tx_Rx(1);
     /* This loop takes a time. Insert rot_rdq() here for multitask envilonment. */
     SPI_DMA_Wait_For_Rx();
-  } while (gu8BuffSPIRx[0] != 0xFF && drvSystick_Running()); /* Wait for card goes ready or timeout */
+  } while (gu8BuffSPIRx[0] != 0xFF && drvSystick_Offset_Running(tickOffset)); /* Wait for card goes ready or timeout */
 
+  // drvSystick_ClearAndStopTimeOut();
   return (gu8BuffSPIRx[0] == 0xFF) ? 1 : 0;
 }
 
@@ -264,9 +277,11 @@ static BYTE send_cmd(          /* Return value: R1 resp (bit7==1:Failed to send)
   //     if(!(res & 0x80)) break;
   // }
 
-  printf_info("send_cmd %d: %02x\n", cmd, res);
-  // drvSystick_Setms(1);
-  // drvSystick_WaitForTimeOut();
+  printf_dbg("send_cmd %d: %02x\n", cmd, res);
+  // #ifndef FUNCONF_DEBUG
+  // arg = drvSystick_Offset_Setus(800);
+  // while (drvSystick_Offset_Running(arg));
+  // #endif
   return res; /* Return received response */
 }
 
@@ -279,13 +294,14 @@ static int rcvr_datablock(            /* 1:OK, 0:Error */
 ) {
   // previously `send_cmd` or `_dselect` should have selected gu8BuffSPITx/Rx as our working DMA buffer
   GPIOC->CFGLR = SPI_GPIO_MOSI_HIGH;
-  drvSystick_Setms(200);
+  const uint32_t tickOffset = drvSystick_Offset_Setms(200);
   do { /* Wait for DataStart token in timeout of 200ms */
     // DMA1->INTFCR = SPI_DMA_FLAGS_Tx_Rx;
     SPI_DMA_Start_Tx_Rx(1);
     SPI_DMA_Wait_For_Rx();
     /* This loop will take a time. Insert rot_rdq() here for multitask envilonment. */
-  } while ((gu8BuffSPIRx[0] == 0xFF) && drvSystick_Running());
+  } while ((gu8BuffSPIRx[0] == 0xFF) && drvSystick_Offset_Running(tickOffset));
+  
   if (gu8BuffSPIRx[0] != 0xFE) {
     printf_dbg("rcvr_datablock:%02x\n", gu8BuffSPIRx[0]);
     return 0;
@@ -316,20 +332,30 @@ static int xmit_datablock(                  /* 1:OK, 0:Failed */
 ) {
   BYTE resp;
 
-  if (!wait_ready(500))
+  if (!wait_ready(500)) {
+    // printf_info("xmit_datablock: wait_ready timeout\n");
     return 0; /* Wait for card ready */
+  }
 
   // previously `wait_ready` should have selected gu8BuffSPITx/Rx as our working DMA buffer
   GPIOC->CFGLR = SPI_GPIO_DEFAULT;
   gu8BuffSPITx[0] = token;
   SPI_DMA_Start_Tx_Rx(1);
   SPI_DMA_Wait_For_Rx();
+  // while ((DMA1->INTFR & SPI_DMA_FLAGS_Rx) == 0) {}
+  // printf_info("1:%X %X\n", DMA1->INTFR, SPI1->STATR);
+  // SPI_DMA_Reset_Tx_Rx();
+  // gu8BuffSPITx[0] = SPI1->STATR;
   // xchg_spi(token);					/* Send token */
   if (token != 0xFD) { /* Send data if token is other than StopTran */
     SPI_DMA_Tx->MADDR = (ptrdiff_t)buff;
     SPI_DMA_Rx->MADDR = (ptrdiff_t)buff;
     SPI_DMA_Start_Tx_Rx(512);
     SPI_DMA_Wait_For_Rx();
+    // while ((DMA1->INTFR & SPI_DMA_FLAGS_Rx) == 0) {}
+    // printf_info("2:%X %X\n", DMA1->INTFR, SPI1->STATR);
+    // SPI_DMA_Reset_Tx_Rx();
+    // gu8BuffSPITx[1] = SPI1->STATR;
     // xmit_spi_multi(buff, 512);		/* Data */
 
     GPIOC->CFGLR = SPI_GPIO_MOSI_HIGH;
@@ -337,12 +363,19 @@ static int xmit_datablock(                  /* 1:OK, 0:Failed */
     SPI_DMA_Rx->MADDR = (ptrdiff_t)gu8BuffSPIRx;
     SPI_DMA_Start_Tx_Rx(3);
     SPI_DMA_Wait_For_Rx();
+    // while ((DMA1->INTFR & SPI_DMA_FLAGS_Rx) == 0) {}
+    // printf_info("3:%X %X\n", DMA1->INTFR, SPI1->STATR);
+    // SPI_DMA_Reset_Tx_Rx();
+    // gu8BuffSPITx[2] = SPI1->STATR;
     // xchg_spi(0xFF); xchg_spi(0xFF);	/* Dummy CRC */
 
     resp = gu8BuffSPIRx[2];
     // resp = xchg_spi(0xFF);				/* Receive data resp */
-    if ((resp & 0x1F) != 0x05)
+    if ((resp & 0x1F) != 0x05) {
+      // printf_info("xmit_datablock: statr %X %X %X\n", gu8BuffSPITx[0], gu8BuffSPITx[1], gu8BuffSPITx[2]);
+      // printf_info("xmit_datablock: resp %X %X %X\n", gu8BuffSPIRx[0], gu8BuffSPIRx[1], gu8BuffSPIRx[2]);
       return 0; /* Function fails if the data packet was not accepted */
+    }
   }
   return 1;
 }
@@ -369,9 +402,10 @@ DSTATUS disk_initialize(BYTE pdrv /* Physical drive nmuber to identify the drive
   SPI_DMA_Start_Tx_Rx(10);
   SPI_DMA_Wait_For_Rx();
 
+  drvSystick_Restart();
   ty = 0;
   if (send_cmd(CMD0, 0) == 1) {       /* Put the card SPI/Idle state */
-    drvSystick_Setms(1000);           /* Initialization timeout = 1 sec */
+    const uint32_t tickOffset = drvSystick_Offset_Setms(1000);           /* Initialization timeout = 1 sec */
     if (send_cmd(CMD8, 0x1AA) == 1) { /* SDv2? */
                                       // gu8BuffSPITx[0]=gu8BuffSPITx[1]=gu8BuffSPITx[2]=gu8BuffSPITx[3]=0xFF;
       GPIOC->CFGLR = SPI_GPIO_MOSI_HIGH;
@@ -380,9 +414,9 @@ DSTATUS disk_initialize(BYTE pdrv /* Physical drive nmuber to identify the drive
       // for (n = 0; n < 4; n++) ocr[n] = xchg_spi(0xFF);	/* Get 32 bit return value of R7 resp */
 
       if (gu8BuffSPIRx[2] == 0x01 && gu8BuffSPIRx[3] == 0xAA) { /* Is the card supports vcc of 2.7-3.6V? */
-        while (drvSystick_Running() && send_cmd(ACMD41, 1UL << 30))
+        while (drvSystick_Offset_Running(tickOffset) && send_cmd(ACMD41, 1UL << 30))
           ;                                                    /* Wait for end of initialization with ACMD41(HCS) */
-        if (drvSystick_Running() && send_cmd(CMD58, 0) == 0) { /* Check CCS bit in the OCR */
+        if (drvSystick_Offset_Running(tickOffset) && send_cmd(CMD58, 0) == 0) { /* Check CCS bit in the OCR */
           // gu8BuffSPITx[0]=gu8BuffSPITx[1]=gu8BuffSPITx[2]=gu8BuffSPITx[3]=0xFF;
           GPIOC->CFGLR = SPI_GPIO_MOSI_HIGH;
           SPI_DMA_Start_Tx_Rx(4);
@@ -399,11 +433,12 @@ DSTATUS disk_initialize(BYTE pdrv /* Physical drive nmuber to identify the drive
         ty = CT_MMC3;
         cmd = CMD1; /* MMCv3 (CMD1(0)) */
       }
-      while (drvSystick_Running() && send_cmd(cmd, 0))
+      while (drvSystick_Offset_Running(tickOffset) && send_cmd(cmd, 0))
         ;                                                     /* Wait for end of initialization */
-      if (drvSystick_TimedOut() || send_cmd(CMD16, 512) != 0) /* Set block length: 512 */
+      if (drvSystick_Offset_TimedOut(tickOffset) || send_cmd(CMD16, 512) != 0) /* Set block length: 512 */
         ty = 0;
     }
+    // drvSystick_ClearAndStopTimeOut();
   }
   CardType = ty; /* Card type */
   _deselect();
@@ -416,6 +451,7 @@ DSTATUS disk_initialize(BYTE pdrv /* Physical drive nmuber to identify the drive
   }
 
   uint8_t csd[16];
+  // #define csd gbuffCache
   if (send_cmd(CMD9, 0) == 0 && rcvr_datablock(csd, 16)) { /* READ_CSD */
     // _dump_buffer (csd, 1);
     /*Read TRANS_SPEED <= CSD[103:96] a.k.a csd[3]*/
@@ -506,6 +542,8 @@ DRESULT disk_read(BYTE drv,     /* Physical drive number (0) */
 ) {
   DWORD sect = (DWORD)sector;
 
+  drvSystick_Restart();
+  
   if (drv || !count)
     return RES_PARERR; /* Check parameter */
   if (Stat & STA_NOINIT)
@@ -553,6 +591,8 @@ DRESULT disk_write(BYTE drv,         /* Physical drive number (0) */
                    UINT count        /* Number of sectors to write (1..128) */
 ) {
   DWORD sect = (DWORD)sector;
+
+  drvSystick_Restart();
 
   if (drv || !count)
     return RES_PARERR; /* Check parameter */

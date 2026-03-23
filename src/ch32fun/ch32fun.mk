@@ -57,7 +57,9 @@ ifeq ($(findstring CH32V00,$(TARGET_MCU)),CH32V00) # CH32V002, 3, 4, 5, 6, 7
 	LDFLAGS+=-L$(CH32FUN)/../misc -lgcc
 	# Note: The CH32V003 is different from the other 00x variants and needs a different ARCH
 	ifeq ($(TARGET_MCU),CH32V003)
-		ifeq "$(PREFIX_DEFAULT)" "riscv-wch-elf"
+		ifeq "$(PREFIX)" "riscv-wch-elf"
+			CFLAGS_ARCH+=-march=rv32ec_xw -mabi=ilp32e -fno-common -misa-spec=2.2
+		else ifeq "$(PREFIX)" "riscv32-wch-elf"
 			CFLAGS_ARCH+=-march=rv32ec_xw -mabi=ilp32e -fno-common -misa-spec=2.2
 		else
 			CFLAGS_ARCH+=-march=rv32ec -mabi=ilp32e

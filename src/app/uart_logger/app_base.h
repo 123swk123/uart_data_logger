@@ -22,11 +22,13 @@
     // #define printf_(...)
     // #define puts_(...)
     
+    #define printf_info(...)
+    #define puts_info(...)
     #define printf_dbg(...)
     #define puts_dbg(...)
   #endif
-  #define printf_info printf
-  #define puts_info puts
+  // #define printf_info printf
+  // #define puts_info puts
   #define printf_err printf
   #define puts_err puts
 #else
@@ -84,7 +86,7 @@
 #define APP_KEY_START_STOP    GPIO_Pin_3
 
 #define APP_TIMER_TICK_PERIOD 50 /*milli-sec*/
-#define APP_UART_RX_BUFF_SZ   100
+#define APP_UART_RX_BUFF_SZ   150
 
 #define UART_DMA_Rx                           DMA1_Channel5
 
