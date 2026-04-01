@@ -8,6 +8,8 @@ This is a simple UART data logger, logger saves the data to FAT(12/16/32) format
 ## Schematic
 
 ![Schematic](docs/schematic.png)
+![PCB Front](docs/uart_data_logger_front.png)
+![PCB Back](docs/uart_data_logger_back.png)
 
 ## Preparations
 

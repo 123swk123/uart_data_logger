@@ -60,7 +60,24 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [],
+      "drc_exclusions": [
+        [
+          "unconnected_items|102475000|90200000|F.Cu|4|38745cf9-5f0a-4207-966d-60b206acfb49|d18d4f2c-3cb2-40b8-9a2a-44877198af82",
+          "shield un-used"
+        ],
+        [
+          "unconnected_items|107025000|95900000|F.Cu|4|5325ce54-da97-488b-bb22-188de389cd3e|494d19ef-dc45-49a8-92fe-096495397b45",
+          "shield un-used"
+        ],
+        [
+          "unconnected_items|112825000|90200000|F.Cu|4|11dfe62c-ec2e-4d38-bea0-71486cd23378|38745cf9-5f0a-4207-966d-60b206acfb49",
+          "shield un-used"
+        ],
+        [
+          "unconnected_items|113275000|103700000|F.Cu|4|19b156f2-d7fe-4256-b711-c7c6f9439acd|11dfe62c-ec2e-4d38-bea0-71486cd23378",
+          "shield un-used"
+        ]
+      ],
       "meta": {
         "version": 2
       },
@@ -118,6 +135,7 @@
         "too_many_vias": "error",
         "track_angle": "error",
         "track_dangling": "warning",
+        "track_not_centered_on_via": "ignore",
         "track_on_post_machined_layer": "error",
         "track_segment_length": "error",
         "track_width": "error",
@@ -233,11 +251,13 @@
       "zones_allow_external_fillets": false
     },
     "ipc2581": {
+      "bom_rev": "",
       "dist": "",
       "distpn": "",
       "internal_id": "",
       "mfg": "",
-      "mpn": ""
+      "mpn": "",
+      "sch_revision": "1.0"
     },
     "layer_pairs": [],
     "layer_presets": [],
@@ -443,6 +463,7 @@
       "duplicate_sheet_names": "error",
       "endpoint_off_grid": "warning",
       "extra_units": "error",
+      "field_name_whitespace": "warning",
       "footprint_filter": "ignore",
       "footprint_link_issues": "warning",
       "four_way_junction": "ignore",
@@ -590,7 +611,7 @@
       "gencad": "",
       "idf": "",
       "netlist": "",
-      "plot": "",
+      "plot": "outputs/mfg",
       "specctra_dsn": "",
       "step": "",
       "vrml": ""
@@ -665,12 +686,24 @@
           "label": "Datasheet",
           "name": "Datasheet",
           "show": true
+        },
+        {
+          "group_by": false,
+          "label": "Description",
+          "name": "Description",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "#",
+          "name": "${ITEM_NUMBER}",
+          "show": false
         }
       ],
       "filter_string": "",
       "group_symbols": true,
       "include_excluded_from_bom": true,
-      "name": "Default Editing",
+      "name": "",
       "sort_asc": true,
       "sort_field": "Reference"
     },
@@ -721,7 +754,7 @@
         "uuid": "ff3e8eb3-5342-4889-95b7-a231cf751efc"
       }
     ],
-    "used_designators": "R2",
+    "used_designators": "",
     "variants": []
   },
   "sheets": [
